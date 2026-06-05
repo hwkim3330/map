@@ -1,0 +1,65 @@
+name: Deploy to GitHub Pages
+
+# 빌드 시점에 레포 Secrets 의 키를 index.html 의 __XXX__ 자리에 끼워넣고 Pages 로 배포합니다.
+# 키는 git 소스에 남지 않습니다. (단, 지도 JS키는 배포된 페이지에서는 어차피 보입니다 → 콘솔 도메인 등록이 진짜 보안)
+#
+# 설정: 레포 Settings → Secrets and variables → Actions → New repository secret
+#   KAKAO_KEY   (필수: 카카오 JavaScript 키)
+#   NAVER_KEY   (선택: 네이버 ncpKeyId)
+#   GOOGLE_KEY  (선택: Google Maps JS API 키)
+#   VWORLD_KEY  (선택: VWorld 인증키)
+#   PROXY_URL   (선택: Cloudflare Worker 주소)
+# 그리고 Settings → Pages → Build and deployment → Source = "GitHub Actions"
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inject API keys
+        env:
+          KAKAO_KEY:  ${{ secrets.KAKAO_KEY }}
+          NAVER_KEY:  ${{ secrets.NAVER_KEY }}
+          GOOGLE_KEY: ${{ secrets.GOOGLE_KEY }}
+          VWORLD_KEY: ${{ secrets.VWORLD_KEY }}
+          PROXY_URL:  ${{ secrets.PROXY_URL }}
+        run: |
+          python3 - <<'PY'
+          import os
+          html = open('index.html', encoding='utf-8').read()
+          for ph, env in [
+              ('__KAKAO_KEY__',  'KAKAO_KEY'),
+              ('__NAVER_KEY__',  'NAVER_KEY'),
+              ('__GOOGLE_KEY__', 'GOOGLE_KEY'),
+              ('__VWORLD_KEY__', 'VWORLD_KEY'),
+              ('__PROXY_URL__',  'PROXY_URL'),
+          ]:
+              html = html.replace(ph, os.environ.get(env, '') or '')
+          open('index.html', 'w', encoding='utf-8').write(html)
+          print('keys injected (empty secrets left blank)')
+          PY
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+      - id: deployment
+        uses: actions/deploy-pages@v4

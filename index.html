@@ -3,36 +3,69 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>클릭 GPS 좌표 확인 · Naver / Kakao / Google / VWorld / OSM</title>
+<meta name="theme-color" content="#0f1216" />
+<title>클릭 GPS 좌표 · OSM / Naver / Kakao / Google / VWorld</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/ol/7.5.2/ol.css" />
 <style>
-  :root{ --bg:#0f1216; --panel:#171b21; --line:#2a3038; --txt:#e7ecf2; --sub:#9aa6b2; --accent:#3b82f6; --ok:#22c55e; }
+  :root{ --bg:#0f1216; --panel:#171b21; --line:#2a3038; --txt:#e7ecf2; --sub:#9aa6b2; --accent:#3b82f6; --ok:#22c55e; --warn:#f59e0b; --danger:#ef4444; }
   *{ box-sizing:border-box; }
-  html,body{ margin:0; height:100%; font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; background:var(--bg); color:var(--txt); }
+  html,body{ margin:0; height:100%; font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; background:var(--bg); color:var(--txt); -webkit-tap-highlight-color:transparent; }
   #app{ display:flex; flex-direction:column; height:100%; }
   header{ padding:8px 12px; background:var(--panel); border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   .tabs{ display:flex; gap:4px; flex-wrap:wrap; }
-  .tab{ padding:6px 12px; border:1px solid var(--line); background:#10141a; color:var(--sub); border-radius:8px; cursor:pointer; font-size:13px; }
+  .tab{ padding:6px 12px; border:1px solid var(--line); background:#10141a; color:var(--sub); border-radius:8px; cursor:pointer; font-size:13px; user-select:none; }
   .tab.active{ background:var(--accent); color:#fff; border-color:var(--accent); }
   .grow{ flex:1; }
   #search{ display:flex; gap:6px; align-items:center; }
-  #search input{ background:#10141a; border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:6px 10px; width:220px; font-size:13px; }
+  #search input{ background:#10141a; border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:6px 10px; width:200px; font-size:13px; }
   #search button,.btn{ background:#10141a; border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:6px 10px; cursor:pointer; font-size:13px; }
   #search button:hover,.btn:hover{ border-color:var(--accent); }
+  .btn.primary{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .btn.toggled{ background:var(--ok); border-color:var(--ok); color:#06210f; }
   #stage{ position:relative; flex:1; }
   .map{ position:absolute; inset:0; display:none; }
   .map.active{ display:block; }
   .note{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center; padding:24px; color:var(--sub); font-size:14px; line-height:1.7; }
   .note code{ background:#10141a; padding:2px 6px; border-radius:6px; color:#cbd5e1; }
-  #readout{ position:absolute; left:12px; bottom:12px; z-index:50; background:rgba(23,27,33,.95); border:1px solid var(--line); border-radius:12px; padding:12px 14px; min-width:260px; backdrop-filter:blur(6px); box-shadow:0 6px 24px rgba(0,0,0,.4); }
+
+  /* 읽기 패널 */
+  #readout{ position:absolute; left:12px; bottom:12px; z-index:50; background:rgba(23,27,33,.96); border:1px solid var(--line); border-radius:12px; padding:12px 14px; width:300px; max-width:calc(100vw - 24px); backdrop-filter:blur(6px); box-shadow:0 6px 24px rgba(0,0,0,.4); }
+  #readout .head{ display:flex; align-items:center; justify-content:space-between; }
   #readout .lbl{ font-size:11px; color:var(--sub); letter-spacing:.04em; text-transform:uppercase; }
-  #readout .val{ font-size:18px; font-weight:600; margin:2px 0 8px; font-variant-numeric:tabular-nums; user-select:all; }
+  #readout .val{ font-size:18px; font-weight:600; margin:2px 0 8px; font-variant-numeric:tabular-nums; user-select:all; cursor:pointer; }
   #readout .row{ display:flex; gap:8px; }
-  #readout .row .btn{ flex:1; text-align:center; }
-  #addr{ font-size:12px; color:var(--sub); margin-top:8px; min-height:16px; }
+  #readout .row .btn{ flex:1; text-align:center; padding:7px 8px; }
+  #addr{ font-size:12px; color:var(--sub); margin-top:8px; min-height:16px; word-break:keep-all; }
+  #dist{ font-size:12px; color:var(--accent); margin-top:6px; min-height:16px; font-variant-numeric:tabular-nums; }
+  #collapse{ background:none; border:none; color:var(--sub); cursor:pointer; font-size:16px; padding:0 4px; }
+  #readout.collapsed .body{ display:none; }
+
+  /* 모드/액션 바 */
+  #actions{ position:absolute; right:12px; top:12px; z-index:50; display:flex; flex-direction:column; gap:6px; align-items:flex-end; }
+  #actions .btn{ box-shadow:0 4px 14px rgba(0,0,0,.35); }
+
+  /* 저장 목록 */
+  #saved{ position:absolute; right:12px; top:96px; z-index:50; width:260px; max-width:calc(100vw - 24px); max-height:46vh; overflow:auto; background:rgba(23,27,33,.96); border:1px solid var(--line); border-radius:12px; padding:8px; display:none; box-shadow:0 6px 24px rgba(0,0,0,.4); }
+  #saved.show{ display:block; }
+  #saved .shead{ display:flex; gap:6px; padding:4px 4px 8px; }
+  #saved .shead .btn{ flex:1; font-size:12px; padding:5px 6px; }
+  .item{ display:flex; align-items:center; gap:6px; padding:6px; border-radius:8px; cursor:pointer; }
+  .item:hover{ background:#10141a; }
+  .item .nm{ flex:1; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .item .co{ font-size:11px; color:var(--sub); font-variant-numeric:tabular-nums; }
+  .item .del{ color:var(--danger); border:none; background:none; cursor:pointer; font-size:14px; padding:0 4px; }
+  .empty{ color:var(--sub); font-size:12px; text-align:center; padding:12px; }
+
   #toast{ position:absolute; top:12px; left:50%; transform:translateX(-50%); background:var(--ok); color:#06210f; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:600; opacity:0; transition:opacity .2s; z-index:100; pointer-events:none; }
   #toast.show{ opacity:1; }
   a{ color:var(--accent); }
+
+  @media (max-width:560px){
+    #search input{ width:130px; }
+    #readout{ left:8px; right:8px; bottom:8px; width:auto; }
+    #actions{ right:8px; top:8px; }
+    #saved{ right:8px; top:auto; bottom:200px; }
+  }
 </style>
 </head>
 <body>
@@ -53,33 +86,63 @@
     <div id="google" class="map"></div>
     <div id="vworld" class="map"></div>
 
-    <div id="readout">
-      <div class="lbl">위도 / 경도 (WGS84)</div>
-      <div class="val" id="coord">지도를 클릭하세요</div>
-      <div class="row">
-        <button class="btn" id="copyBtn">좌표 복사</button>
-        <button class="btn" id="copyRevBtn">경도,위도</button>
+    <div id="actions">
+      <button class="btn" id="modeBtn" title="여러 점 찍어 거리 측정">📏 거리측정</button>
+      <button class="btn" id="saveBtn" title="현재 좌표 저장">💾 저장</button>
+      <button class="btn" id="listBtn" title="저장 목록">📂 목록</button>
+      <button class="btn" id="shareBtn" title="현재 보기 링크 복사">🔗 공유</button>
+      <button class="btn" id="clearBtn" title="찍은 점 지우기">🗑 지우기</button>
+    </div>
+
+    <div id="saved">
+      <div class="shead">
+        <button class="btn" id="exportCsv">CSV</button>
+        <button class="btn" id="exportGeo">GeoJSON</button>
+        <button class="btn" id="clearSaved">전체삭제</button>
       </div>
-      <div id="addr"></div>
+      <div id="savedList"></div>
+    </div>
+
+    <div id="readout">
+      <div class="head">
+        <div class="lbl">위도 / 경도 (WGS84)</div>
+        <button id="collapse" title="접기/펴기">▾</button>
+      </div>
+      <div class="body">
+        <div class="val" id="coord" title="클릭하면 복사">지도를 클릭하세요</div>
+        <div class="row">
+          <button class="btn" id="copyBtn">좌표 복사</button>
+          <button class="btn" id="copyRevBtn">경도,위도</button>
+        </div>
+        <div id="dist"></div>
+        <div id="addr"></div>
+      </div>
     </div>
     <div id="toast">복사됨</div>
   </div>
 </div>
 
-<!-- ===================== 설정: 여기에 발급받은 키를 넣으세요 ===================== -->
+<!-- ===================== 설정 ===================== -->
 <script>
 window.MAP_KEYS = {
-  // 네이버 클라우드 플랫폼(Maps) — JavaScript Key ID. 신규 콘솔은 ncpKeyId, 구버전은 ncpClientId
-  NAVER:  "",
+  // 네이버 클라우드 플랫폼(Maps) — JavaScript Key ID
+  NAVER:  "__NAVER_KEY__",
   // 카카오 디벨로퍼스 — JavaScript 키
+  // 배포 시 GitHub Actions가 __KAKAO_KEY__ 자리를 시크릿으로 치환합니다.
+  // 로컬에서 바로 쓰려면 아래 값을 직접 키로 바꿔도 됩니다(도메인 등록 필수).
   KAKAO:  "15ea75156dcdcf1fc35542ba58ef3f50",
   // Google Cloud — Maps JavaScript API Key
-  GOOGLE: "",
-  // VWorld(국토부) 오픈API 인증키 — 도메인 등록 필요
-  VWORLD: ""
+  GOOGLE: "__GOOGLE_KEY__",
+  // VWorld(국토부) 오픈API 인증키
+  VWORLD: "__VWORLD_KEY__",
+  // (선택) 카카오 REST 프록시 Worker 주소. 비우면 OSM Nominatim 사용.
+  // 예: "https://kakao-proxy.<your>.workers.dev"
+  PROXY:  "__PROXY_URL__"
 };
+// 치환 안 된 플레이스홀더는 빈 값 처리
+(function(K){ for(var k in K){ if(/^__[A-Z_]+__$/.test(K[k])) K[k]=""; } })(window.MAP_KEYS);
 </script>
-<!-- ========================================================================= -->
+<!-- ============================================== -->
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ol/7.5.2/ol.js"></script>
 <script>
@@ -87,203 +150,328 @@ window.MAP_KEYS = {
   "use strict";
   var K = window.MAP_KEYS;
   var INIT = { lat: 37.5666103, lng: 126.9783882, zoom: 15 }; // 서울시청
-  var loaded = {}; // 지도별 1회 초기화 플래그
-  var instances = {}; // 지도 인스턴스 보관 (마커 관리용)
+  var loaded = {};      // 지도별 1회 초기화 플래그
+  var instances = {};   // { id: {map, render(points), center(lat,lng,zoom)} }
+  var activeId = "osm";
 
-  /* ---------- 공통 UI ---------- */
+  /* ---------- 상태 ---------- */
+  var state = {
+    mode: "pin",          // "pin" | "path"
+    points: [],           // [{lat,lng}]
+    saved: loadSaved()    // [{name,lat,lng}]
+  };
+
+  /* ---------- DOM ---------- */
   var coordEl = document.getElementById('coord');
   var addrEl  = document.getElementById('addr');
+  var distEl  = document.getElementById('dist');
   var toastEl = document.getElementById('toast');
-  var last = null; // {lat,lng}
 
   function fmt(n){ return Number(n).toFixed(7); }
-  function setCoord(lat, lng){
-    last = { lat: lat, lng: lng };
-    coordEl.textContent = fmt(lat) + ", " + fmt(lng);
-    addrEl.textContent = "";
-    reverseGeocode(lat, lng);
-  }
-  function toast(msg){ toastEl.textContent = msg||"복사됨"; toastEl.classList.add('show'); setTimeout(function(){ toastEl.classList.remove('show'); }, 1100); }
-  function copy(text){ navigator.clipboard && navigator.clipboard.writeText(text).then(function(){ toast(); }, function(){ fallbackCopy(text); }) || fallbackCopy(text); }
+  function toast(msg){ toastEl.textContent = msg||"복사됨"; toastEl.classList.add('show'); setTimeout(function(){ toastEl.classList.remove('show'); }, 1200); }
+  function copy(text){ (navigator.clipboard && navigator.clipboard.writeText(text).then(function(){ toast(); }, function(){ fallbackCopy(text); })) || fallbackCopy(text); }
   function fallbackCopy(text){ var t=document.createElement('textarea'); t.value=text; document.body.appendChild(t); t.select(); try{document.execCommand('copy'); toast();}catch(e){} document.body.removeChild(t); }
 
-  document.getElementById('copyBtn').onclick = function(){ if(last) copy(fmt(last.lat)+", "+fmt(last.lng)); };
-  document.getElementById('copyRevBtn').onclick = function(){ if(last) copy(fmt(last.lng)+", "+fmt(last.lat)); };
+  function last(){ return state.points[state.points.length-1] || null; }
 
-  /* 역지오코딩(주소표시): OSM Nominatim — 키 불필요, 가벼운 사용만 */
+  /* 좌표 클릭 = 복사 */
+  coordEl.onclick = function(){ var l=last(); if(l) copy(fmt(l.lat)+", "+fmt(l.lng)); };
+  document.getElementById('copyBtn').onclick = function(){ var l=last(); if(l) copy(fmt(l.lat)+", "+fmt(l.lng)); };
+  document.getElementById('copyRevBtn').onclick = function(){ var l=last(); if(l) copy(fmt(l.lng)+", "+fmt(l.lat)); };
+  document.getElementById('collapse').onclick = function(){ document.getElementById('readout').classList.toggle('collapsed'); };
+
+  /* ---------- 거리(하버사인) ---------- */
+  function haversine(a,b){
+    var R=6371000, toRad=Math.PI/180;
+    var dLat=(b.lat-a.lat)*toRad, dLng=(b.lng-a.lng)*toRad;
+    var s=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(a.lat*toRad)*Math.cos(b.lat*toRad)*Math.sin(dLng/2)*Math.sin(dLng/2);
+    return 2*R*Math.asin(Math.sqrt(s));
+  }
+  function totalDist(){ var d=0; for(var i=1;i<state.points.length;i++) d+=haversine(state.points[i-1],state.points[i]); return d; }
+  function fmtDist(m){ return m>=1000 ? (m/1000).toFixed(3)+" km" : m.toFixed(1)+" m"; }
+
+  /* ---------- 클릭 처리(공통) ---------- */
+  function onMapClick(lat,lng){
+    if(state.mode==="pin"){ state.points=[{lat:lat,lng:lng}]; }
+    else { state.points.push({lat:lat,lng:lng}); }
+    refresh();
+    reverseGeocode(lat,lng);
+  }
+  function refresh(){
+    var l=last();
+    coordEl.textContent = l ? (fmt(l.lat)+", "+fmt(l.lng)) : "지도를 클릭하세요";
+    if(state.mode==="path" && state.points.length>=2){
+      distEl.textContent = "📏 누적 "+fmtDist(totalDist())+"  ("+state.points.length+"점)";
+    } else { distEl.textContent=""; }
+    var inst=instances[activeId];
+    if(inst && inst.render) inst.render(state.points);
+  }
+
+  /* 역지오코딩: 카카오 프록시 있으면 사용, 없으면 OSM Nominatim */
   var geoTimer=null;
   function reverseGeocode(lat,lng){
+    addrEl.textContent="";
     clearTimeout(geoTimer);
-    geoTimer = setTimeout(function(){
-      fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat="+lat+"&lon="+lng+"&accept-language=ko")
-        .then(function(r){ return r.json(); })
-        .then(function(d){ if(d && d.display_name) addrEl.textContent = "📍 "+d.display_name; })
-        .catch(function(){});
-    }, 350);
+    geoTimer=setTimeout(function(){
+      if(K.PROXY){
+        fetch(K.PROXY.replace(/\/$/,'')+"/coord2address?x="+lng+"&y="+lat)
+          .then(function(r){return r.json();})
+          .then(function(d){
+            var doc=d && d.documents && d.documents[0];
+            var a=doc && (doc.road_address||doc.address);
+            if(a && a.address_name) addrEl.textContent="📍 "+a.address_name;
+          }).catch(function(){ nominatimReverse(lat,lng); });
+      } else { nominatimReverse(lat,lng); }
+    },350);
+  }
+  function nominatimReverse(lat,lng){
+    fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat="+lat+"&lon="+lng+"&accept-language=ko")
+      .then(function(r){return r.json();})
+      .then(function(d){ if(d&&d.display_name) addrEl.textContent="📍 "+d.display_name; })
+      .catch(function(){});
   }
 
   /* ---------- 탭 ---------- */
-  var MAPS = [
-    { id:"osm",    name:"OSM (키 불필요)" },
+  var MAPS=[
+    { id:"osm",    name:"OSM" },
     { id:"naver",  name:"Naver" },
     { id:"kakao",  name:"Kakao" },
     { id:"google", name:"Google" },
     { id:"vworld", name:"VWorld" }
   ];
-  var tabsEl = document.getElementById('tabs');
+  var tabsEl=document.getElementById('tabs');
   MAPS.forEach(function(m){
     var b=document.createElement('div'); b.className='tab'+(m.id==='osm'?' active':''); b.textContent=m.name; b.dataset.id=m.id;
     b.onclick=function(){ activate(m.id); };
     tabsEl.appendChild(b);
   });
   function activate(id){
-    MAPS.forEach(function(m){
-      document.getElementById(m.id).classList.toggle('active', m.id===id);
-    });
-    Array.prototype.forEach.call(tabsEl.children, function(t){ t.classList.toggle('active', t.dataset.id===id); });
+    activeId=id;
+    MAPS.forEach(function(m){ document.getElementById(m.id).classList.toggle('active', m.id===id); });
+    Array.prototype.forEach.call(tabsEl.children,function(t){ t.classList.toggle('active', t.dataset.id===id); });
     initMap(id);
-    // OpenLayers는 숨김상태에서 init되면 크기 0 → 표시 후 갱신
-    setTimeout(function(){ if(id==='osm'&&instances.osm) instances.osm.updateSize(); if(id==='vworld'&&instances.vworld) instances.vworld.updateSize(); }, 50);
+    setTimeout(function(){
+      var inst=instances[id];
+      if(inst){ if(inst.map && inst.map.updateSize) inst.map.updateSize(); if(inst.render) inst.render(state.points); }
+    },60);
   }
 
   /* ---------- 키 없음 안내 ---------- */
-  function needKey(elId, label, where){
-    var el=document.getElementById(elId);
-    el.innerHTML='<div class="note">'+label+' 지도를 쓰려면 키가 필요합니다.<br>'+
-      '<code>index.html</code> 상단 <code>MAP_KEYS</code>에 '+where+' 키를 넣으세요.<br>'+
-      'README의 키 발급 안내를 참고하세요.</div>';
+  function needKey(elId,label,where){
+    document.getElementById(elId).innerHTML='<div class="note">'+label+' 지도를 쓰려면 키가 필요합니다.<br>'+
+      '<code>MAP_KEYS.'+where+'</code> 에 키를 넣고, 카카오/네이버/VWorld는 콘솔에 <b>이 사이트 도메인</b>을 등록하세요.<br>'+
+      'README의 키 발급·도메인 등록 안내 참고.</div>';
   }
+  function loadScript(src,cb){ var s=document.createElement('script'); s.src=src; s.onload=cb; s.onerror=function(){ cb(new Error('load fail '+src)); }; document.head.appendChild(s); }
 
-  /* ---------- 외부 스크립트 로더 ---------- */
-  function loadScript(src, cb){ var s=document.createElement('script'); s.src=src; s.onload=cb; s.onerror=function(){ cb(new Error('load fail '+src)); }; document.head.appendChild(s); }
-
-  /* ---------- OSM (OpenLayers, 키 불필요) ---------- */
+  /* ---------- OpenLayers 공통(OSM, VWorld) ---------- */
+  function makeOLRender(map, color){
+    var src=new ol.source.Vector();
+    map.addLayer(new ol.layer.Vector({ source:src, style:function(f){
+      var t=f.get('t');
+      if(t==='line') return new ol.style.Style({ stroke:new ol.style.Stroke({color:color,width:3}) });
+      return new ol.style.Style({ image:new ol.style.Circle({ radius:6, fill:new ol.style.Fill({color:color}), stroke:new ol.style.Stroke({color:'#fff',width:2}) }) });
+    }}));
+    return function(points){
+      src.clear();
+      if(points.length>=2){
+        var coords=points.map(function(p){ return ol.proj.fromLonLat([p.lng,p.lat]); });
+        var lf=new ol.Feature(new ol.geom.LineString(coords)); lf.set('t','line'); src.addFeature(lf);
+      }
+      points.forEach(function(p){ src.addFeature(new ol.Feature(new ol.geom.Point(ol.proj.fromLonLat([p.lng,p.lat])))); });
+    };
+  }
   function initOSM(){
-    var map = new ol.Map({
-      target:'osm',
+    var map=new ol.Map({ target:'osm',
       layers:[ new ol.layer.Tile({ source:new ol.source.OSM() }) ],
-      view:new ol.View({ center:ol.proj.fromLonLat([INIT.lng,INIT.lat]), zoom:INIT.zoom })
-    });
-    var markerSrc = new ol.source.Vector();
-    map.addLayer(new ol.layer.Vector({ source:markerSrc, style:new ol.style.Style({ image:new ol.style.Circle({ radius:7, fill:new ol.style.Fill({color:'#3b82f6'}), stroke:new ol.style.Stroke({color:'#fff',width:2}) }) }) }));
-    map.on('click', function(e){
-      var ll = ol.proj.toLonLat(e.coordinate);
-      setCoord(ll[1], ll[0]);
-      markerSrc.clear(); markerSrc.addFeature(new ol.Feature(new ol.geom.Point(e.coordinate)));
-    });
-    instances.osm = map;
+      view:new ol.View({ center:ol.proj.fromLonLat([INIT.lng,INIT.lat]), zoom:INIT.zoom }) });
+    map.on('click',function(e){ var ll=ol.proj.toLonLat(e.coordinate); onMapClick(ll[1],ll[0]); });
+    instances.osm={ map:map, render:makeOLRender(map,'#3b82f6'),
+      center:function(lat,lng,z){ map.getView().animate({center:ol.proj.fromLonLat([lng,lat]), zoom:z||16}); } };
   }
-
-  /* ---------- VWorld (OpenLayers + VWorld WMTS 타일) ---------- */
   function initVWorld(){
-    if(!K.VWORLD){ needKey('vworld','VWorld','VWorld 오픈API'); return; }
-    var resolutions=[], matrixIds=[];
-    for(var z=0; z<=19; z++){ resolutions.push(156543.03392804097/Math.pow(2,z)); matrixIds.push(String(z)); }
-    var vworldLayer = new ol.layer.Tile({
-      source:new ol.source.XYZ({
-        url:"https://api.vworld.kr/req/wmts/1.0.0/"+K.VWORLD+"/Base/{z}/{y}/{x}.png",
-        crossOrigin:"anonymous"
-      })
-    });
-    var map = new ol.Map({
-      target:'vworld', layers:[vworldLayer],
-      view:new ol.View({ center:ol.proj.fromLonLat([INIT.lng,INIT.lat]), zoom:INIT.zoom })
-    });
-    var markerSrc = new ol.source.Vector();
-    map.addLayer(new ol.layer.Vector({ source:markerSrc, style:new ol.style.Style({ image:new ol.style.Circle({ radius:7, fill:new ol.style.Fill({color:'#ef4444'}), stroke:new ol.style.Stroke({color:'#fff',width:2}) }) }) }));
-    map.on('click', function(e){
-      var ll = ol.proj.toLonLat(e.coordinate);
-      setCoord(ll[1], ll[0]);
-      markerSrc.clear(); markerSrc.addFeature(new ol.Feature(new ol.geom.Point(e.coordinate)));
-    });
-    instances.vworld = map;
+    if(!K.VWORLD){ needKey('vworld','VWorld','VWORLD'); return; }
+    var layer=new ol.layer.Tile({ source:new ol.source.XYZ({
+      url:"https://api.vworld.kr/req/wmts/1.0.0/"+K.VWORLD+"/Base/{z}/{y}/{x}.png", crossOrigin:"anonymous" }) });
+    var map=new ol.Map({ target:'vworld', layers:[layer],
+      view:new ol.View({ center:ol.proj.fromLonLat([INIT.lng,INIT.lat]), zoom:INIT.zoom }) });
+    map.on('click',function(e){ var ll=ol.proj.toLonLat(e.coordinate); onMapClick(ll[1],ll[0]); });
+    instances.vworld={ map:map, render:makeOLRender(map,'#ef4444'),
+      center:function(lat,lng,z){ map.getView().animate({center:ol.proj.fromLonLat([lng,lat]), zoom:z||16}); } };
   }
 
   /* ---------- Naver ---------- */
   function initNaver(){
-    if(!K.NAVER){ needKey('naver','Naver','네이버 클라우드 플랫폼(Maps)'); return; }
-    // 신규 콘솔은 ncpKeyId, 구버전은 ncpClientId. 신규 우선 시도.
-    loadScript("https://openapi.map.naver.com/openapi/v3/maps.js?ncpKeyId="+K.NAVER, function(){
-      if(typeof naver==='undefined'||!naver.maps){ needKey('naver','Naver','올바른 네이버'); return; }
-      var map = new naver.maps.Map('naver', { center:new naver.maps.LatLng(INIT.lat,INIT.lng), zoom:INIT.zoom });
-      var marker = new naver.maps.Marker({ position:new naver.maps.LatLng(INIT.lat,INIT.lng), map:null });
-      naver.maps.Event.addListener(map,'click',function(e){
-        var c=e.coord; setCoord(c.lat(), c.lng());
-        marker.setPosition(c); marker.setMap(map);
-      });
-      instances.naver = map;
+    if(!K.NAVER){ needKey('naver','Naver','NAVER'); return; }
+    loadScript("https://openapi.map.naver.com/openapi/v3/maps.js?ncpKeyId="+K.NAVER,function(){
+      if(typeof naver==='undefined'||!naver.maps){ needKey('naver','Naver','NAVER'); return; }
+      var map=new naver.maps.Map('naver',{ center:new naver.maps.LatLng(INIT.lat,INIT.lng), zoom:INIT.zoom });
+      var markers=[], line=null;
+      naver.maps.Event.addListener(map,'click',function(e){ onMapClick(e.coord.lat(), e.coord.lng()); });
+      function render(points){
+        markers.forEach(function(m){ m.setMap(null); }); markers=[];
+        if(line){ line.setMap(null); line=null; }
+        points.forEach(function(p){ markers.push(new naver.maps.Marker({ position:new naver.maps.LatLng(p.lat,p.lng), map:map })); });
+        if(points.length>=2){ line=new naver.maps.Polyline({ map:map, strokeColor:'#3b82f6', strokeWeight:3,
+          path:points.map(function(p){ return new naver.maps.LatLng(p.lat,p.lng); }) }); }
+      }
+      instances.naver={ map:map, render:render, center:function(lat,lng,z){ map.setCenter(new naver.maps.LatLng(lat,lng)); if(z) map.setZoom(z); } };
+      render(state.points);
     });
   }
 
   /* ---------- Kakao ---------- */
   function initKakao(){
-    if(!K.KAKAO){ needKey('kakao','Kakao','카카오 디벨로퍼스(JavaScript)'); return; }
-    loadScript("https://dapi.kakao.com/v2/maps/sdk.js?appkey="+K.KAKAO+"&autoload=false", function(){
-      if(typeof kakao==='undefined'||!kakao.maps){ needKey('kakao','Kakao','올바른 카카오'); return; }
+    if(!K.KAKAO){ needKey('kakao','Kakao','KAKAO'); return; }
+    loadScript("https://dapi.kakao.com/v2/maps/sdk.js?appkey="+K.KAKAO+"&autoload=false",function(){
+      if(typeof kakao==='undefined'||!kakao.maps){ needKey('kakao','Kakao','KAKAO'); return; }
       kakao.maps.load(function(){
-        var container=document.getElementById('kakao');
-        var map=new kakao.maps.Map(container,{ center:new kakao.maps.LatLng(INIT.lat,INIT.lng), level:3 });
-        var marker=new kakao.maps.Marker({ position:new kakao.maps.LatLng(INIT.lat,INIT.lng) });
-        kakao.maps.event.addListener(map,'click',function(me){
-          var ll=me.latLng; setCoord(ll.getLat(), ll.getLng());
-          marker.setPosition(ll); marker.setMap(map);
-        });
-        instances.kakao = map;
+        var map=new kakao.maps.Map(document.getElementById('kakao'),{ center:new kakao.maps.LatLng(INIT.lat,INIT.lng), level:3 });
+        var markers=[], line=null;
+        kakao.maps.event.addListener(map,'click',function(me){ var ll=me.latLng; onMapClick(ll.getLat(), ll.getLng()); });
+        function render(points){
+          markers.forEach(function(m){ m.setMap(null); }); markers=[];
+          if(line){ line.setMap(null); line=null; }
+          points.forEach(function(p){ var mk=new kakao.maps.Marker({ position:new kakao.maps.LatLng(p.lat,p.lng) }); mk.setMap(map); markers.push(mk); });
+          if(points.length>=2){ line=new kakao.maps.Polyline({ map:map, strokeColor:'#3b82f6', strokeWeight:3, strokeOpacity:0.9,
+            path:points.map(function(p){ return new kakao.maps.LatLng(p.lat,p.lng); }) }); }
+        }
+        instances.kakao={ map:map, render:render, center:function(lat,lng,z){ map.setCenter(new kakao.maps.LatLng(lat,lng)); if(z) map.setLevel(Math.max(1,19-z)); } };
+        render(state.points);
       });
     });
   }
 
   /* ---------- Google ---------- */
   function initGoogle(){
-    if(!K.GOOGLE){ needKey('google','Google','Google Maps JavaScript API'); return; }
+    if(!K.GOOGLE){ needKey('google','Google','GOOGLE'); return; }
     window.__gmapInit=function(){
       var map=new google.maps.Map(document.getElementById('google'),{ center:{lat:INIT.lat,lng:INIT.lng}, zoom:INIT.zoom, mapTypeControl:true });
-      var marker=new google.maps.Marker({ map:null });
-      map.addListener('click',function(e){
-        setCoord(e.latLng.lat(), e.latLng.lng());
-        marker.setPosition(e.latLng); marker.setMap(map);
-      });
-      instances.google = map;
+      var markers=[], line=null;
+      map.addListener('click',function(e){ onMapClick(e.latLng.lat(), e.latLng.lng()); });
+      function render(points){
+        markers.forEach(function(m){ m.setMap(null); }); markers=[];
+        if(line){ line.setMap(null); line=null; }
+        points.forEach(function(p){ markers.push(new google.maps.Marker({ position:{lat:p.lat,lng:p.lng}, map:map })); });
+        if(points.length>=2){ line=new google.maps.Polyline({ map:map, strokeColor:'#3b82f6', strokeWeight:3,
+          path:points.map(function(p){ return {lat:p.lat,lng:p.lng}; }) }); }
+      }
+      instances.google={ map:map, render:render, center:function(lat,lng,z){ map.setCenter({lat:lat,lng:lng}); if(z) map.setZoom(z); } };
+      render(state.points);
     };
-    loadScript("https://maps.googleapis.com/maps/api/js?key="+K.GOOGLE+"&callback=__gmapInit", function(err){ if(err) needKey('google','Google','올바른 Google'); });
+    loadScript("https://maps.googleapis.com/maps/api/js?key="+K.GOOGLE+"&callback=__gmapInit",function(err){ if(err) needKey('google','Google','GOOGLE'); });
   }
 
   function initMap(id){
     if(loaded[id]) return; loaded[id]=true;
-    if(id==='osm') initOSM();
-    else if(id==='naver') initNaver();
-    else if(id==='kakao') initKakao();
-    else if(id==='google') initGoogle();
-    else if(id==='vworld') initVWorld();
+    ({osm:initOSM, naver:initNaver, kakao:initKakao, google:initGoogle, vworld:initVWorld}[id])();
   }
 
-  /* ---------- 검색 (Nominatim, 키 불필요) ---------- */
-  function panTo(lat,lng){
-    setCoord(lat,lng);
-    var c=ol.proj.fromLonLat([lng,lat]);
-    if(instances.osm){ instances.osm.getView().animate({center:c, zoom:16}); }
-    if(instances.vworld){ instances.vworld.getView().animate({center:c, zoom:16}); }
-    if(instances.naver && naver.maps){ instances.naver.setCenter(new naver.maps.LatLng(lat,lng)); }
-    if(instances.kakao){ instances.kakao.setCenter(new kakao.maps.LatLng(lat,lng)); }
-    if(instances.google){ instances.google.setCenter({lat:lat,lng:lng}); }
+  /* ---------- 모드/액션 ---------- */
+  var modeBtn=document.getElementById('modeBtn');
+  modeBtn.onclick=function(){
+    state.mode = state.mode==="pin" ? "path" : "pin";
+    modeBtn.classList.toggle('toggled', state.mode==="path");
+    modeBtn.textContent = state.mode==="path" ? "📏 측정중" : "📏 거리측정";
+    if(state.mode==="pin" && state.points.length>1) state.points=[last()];
+    refresh();
+    toast(state.mode==="path" ? "여러 점을 찍어 거리 측정" : "단일 핀 모드");
+  };
+  document.getElementById('clearBtn').onclick=function(){ state.points=[]; refresh(); };
+
+  /* ---------- 저장 ---------- */
+  function loadSaved(){ try{ return JSON.parse(localStorage.getItem('map_saved')||'[]'); }catch(e){ return []; } }
+  function persist(){ localStorage.setItem('map_saved', JSON.stringify(state.saved)); }
+  var savedEl=document.getElementById('saved'), savedList=document.getElementById('savedList');
+  document.getElementById('listBtn').onclick=function(){ savedEl.classList.toggle('show'); renderSaved(); };
+  document.getElementById('saveBtn').onclick=function(){
+    var l=last(); if(!l){ toast("먼저 지도를 클릭"); return; }
+    var name=prompt("이 지점 이름", "지점 "+(state.saved.length+1));
+    if(name===null) return;
+    state.saved.push({ name:name||("지점 "+(state.saved.length+1)), lat:l.lat, lng:l.lng });
+    persist(); renderSaved(); savedEl.classList.add('show'); toast("저장됨");
+  };
+  function renderSaved(){
+    if(!state.saved.length){ savedList.innerHTML='<div class="empty">저장된 지점이 없습니다</div>'; return; }
+    savedList.innerHTML='';
+    state.saved.forEach(function(s,i){
+      var d=document.createElement('div'); d.className='item';
+      d.innerHTML='<span class="nm">'+escapeHtml(s.name)+'</span><span class="co">'+s.lat.toFixed(5)+','+s.lng.toFixed(5)+'</span><button class="del">✕</button>';
+      d.querySelector('.nm').onclick=d.querySelector('.co').onclick=function(){ goTo(s.lat,s.lng); };
+      d.querySelector('.del').onclick=function(ev){ ev.stopPropagation(); state.saved.splice(i,1); persist(); renderSaved(); };
+      savedList.appendChild(d);
+    });
   }
+  function escapeHtml(s){ return String(s).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  document.getElementById('clearSaved').onclick=function(){ if(confirm("저장된 지점을 모두 삭제할까요?")){ state.saved=[]; persist(); renderSaved(); } };
+
+  /* ---------- 내보내기 ---------- */
+  function download(name,text,type){ var b=new Blob([text],{type:type}); var a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); },1000); }
+  document.getElementById('exportCsv').onclick=function(){
+    if(!state.saved.length){ toast("저장된 지점 없음"); return; }
+    var rows=["name,lat,lng"].concat(state.saved.map(function(s){ return '"'+String(s.name).replace(/"/g,'""')+'",'+s.lat+','+s.lng; }));
+    download("points.csv", rows.join("\n"), "text/csv");
+  };
+  document.getElementById('exportGeo').onclick=function(){
+    if(!state.saved.length){ toast("저장된 지점 없음"); return; }
+    var fc={ type:"FeatureCollection", features:state.saved.map(function(s){
+      return { type:"Feature", properties:{name:s.name}, geometry:{ type:"Point", coordinates:[s.lng,s.lat] } }; }) };
+    download("points.geojson", JSON.stringify(fc,null,2), "application/geo+json");
+  };
+
+  /* ---------- 공유(URL 해시) ---------- */
+  document.getElementById('shareBtn').onclick=function(){
+    var l=last() || INIT;
+    var url=location.origin+location.pathname+"#"+l.lat.toFixed(6)+","+l.lng.toFixed(6)+",16,"+activeId;
+    copy(url);
+  };
+  function applyHash(){
+    var h=location.hash.replace(/^#/,''); if(!h) return false;
+    var p=h.split(','); var lat=parseFloat(p[0]), lng=parseFloat(p[1]), z=parseInt(p[2]||"16",10), tab=p[3];
+    if(isNaN(lat)||isNaN(lng)) return false;
+    if(tab && MAPS.some(function(m){return m.id===tab;})) activate(tab);
+    state.points=[{lat:lat,lng:lng}]; refresh();
+    setTimeout(function(){ goTo(lat,lng,z); },120);
+    return true;
+  }
+
+  /* ---------- 이동(모든 인스턴스 동기) ---------- */
+  function goTo(lat,lng,z){
+    state.points=[{lat:lat,lng:lng}]; refresh(); reverseGeocode(lat,lng);
+    Object.keys(instances).forEach(function(id){ if(instances[id].center) instances[id].center(lat,lng,z); });
+  }
+
+  /* ---------- 검색: 카카오 프록시 우선, 없으면 Nominatim ---------- */
   function doSearch(){
     var q=document.getElementById('q').value.trim(); if(!q) return;
+    if(K.PROXY){
+      fetch(K.PROXY.replace(/\/$/,'')+"/search?q="+encodeURIComponent(q))
+        .then(function(r){return r.json();})
+        .then(function(d){
+          var doc=d && d.documents && d.documents[0];
+          if(doc) goTo(parseFloat(doc.y), parseFloat(doc.x), 17);
+          else nominatimSearch(q);
+        }).catch(function(){ nominatimSearch(q); });
+    } else nominatimSearch(q);
+  }
+  function nominatimSearch(q){
     fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=ko&q="+encodeURIComponent(q))
       .then(function(r){return r.json();})
-      .then(function(d){ if(d&&d[0]) panTo(parseFloat(d[0].lat),parseFloat(d[0].lon)); else toast("결과 없음"); })
+      .then(function(d){ if(d&&d[0]) goTo(parseFloat(d[0].lat),parseFloat(d[0].lon),16); else toast("결과 없음"); })
       .catch(function(){ toast("검색 실패"); });
   }
   document.getElementById('goBtn').onclick=doSearch;
   document.getElementById('q').addEventListener('keydown',function(e){ if(e.key==='Enter') doSearch(); });
   document.getElementById('locBtn').onclick=function(){
     if(!navigator.geolocation){ toast("위치 미지원"); return; }
-    navigator.geolocation.getCurrentPosition(function(p){ panTo(p.coords.latitude,p.coords.longitude); }, function(){ toast("위치 거부됨"); });
+    navigator.geolocation.getCurrentPosition(function(p){ goTo(p.coords.latitude,p.coords.longitude,17); }, function(){ toast("위치 거부됨"); });
   };
 
-  /* 시작: OSM */
+  /* ---------- 시작 ---------- */
   initMap('osm');
-  setTimeout(function(){ if(instances.osm) instances.osm.updateSize(); }, 100);
+  setTimeout(function(){ if(instances.osm) instances.osm.map.updateSize(); },100);
+  applyHash();
+  window.addEventListener('hashchange', applyHash);
 })();
 </script>
 </body>
