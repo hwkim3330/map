@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="theme-color" content="#0b1f14" />
+<title>⛳ 골프 기록원 — 카카오 위성 + 샷 거리</title>
+<style>
+  :root{ --bg:#0b1f14; --panel:#10241a; --line:#1f3b2c; --txt:#eaf5ee; --sub:#8fb3a0; --accent:#22c55e; --accent2:#3b82f6; --warn:#f59e0b; --danger:#ef4444; --gold:#eab308; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; background:var(--bg); color:var(--txt); -webkit-tap-highlight-color:transparent; }
+  #app{ display:flex; flex-direction:column; height:100%; }
+  header{ padding:8px 10px; background:var(--panel); border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .brand{ font-weight:700; font-size:15px; }
+  .brand a{ color:var(--sub); text-decoration:none; font-weight:400; font-size:12px; margin-left:6px; }
+  .tabs{ display:flex; gap:4px; }
+  .tab{ padding:7px 12px; border:1px solid var(--line); background:#0c1d14; color:var(--sub); border-radius:8px; cursor:pointer; font-size:13px; user-select:none; }
+  .tab.active{ background:var(--accent); color:#04140a; border-color:var(--accent); font-weight:600; }
+  .grow{ flex:1; }
+  .btn{ background:#0c1d14; border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:7px 11px; cursor:pointer; font-size:13px; }
+  .btn:hover{ border-color:var(--accent); }
+  .btn.primary{ background:var(--accent); border-color:var(--accent); color:#04140a; font-weight:600; }
+  .btn.blue{ background:var(--accent2); border-color:var(--accent2); color:#fff; }
+  .btn.warn{ background:var(--warn); border-color:var(--warn); color:#241a04; }
+  .btn.danger{ background:var(--danger); border-color:var(--danger); color:#fff; }
+  .btn.ghost.active{ background:var(--gold); border-color:var(--gold); color:#241a04; font-weight:700; }
+  input,select{ background:#0c1d14; border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:6px 9px; font-size:13px; }
+
+  #stage{ position:relative; flex:1; }
+  #map{ position:absolute; inset:0; }
+  .note{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center; padding:24px; color:var(--sub); font-size:14px; line-height:1.7; }
+  .note code{ background:#0c1d14; padding:2px 6px; border-radius:6px; }
+
+  /* 좌측 컨트롤 패널 */
+  .panel{ position:absolute; left:10px; top:10px; z-index:50; width:300px; max-width:calc(100vw - 20px); max-height:calc(100% - 20px); overflow:auto; background:rgba(16,36,26,.96); border:1px solid var(--line); border-radius:12px; padding:12px; backdrop-filter:blur(6px); box-shadow:0 6px 24px rgba(0,0,0,.5); display:none; }
+  .panel.show{ display:block; }
+  .panel h3{ margin:0 0 8px; font-size:13px; color:var(--sub); font-weight:600; }
+  .field{ display:flex; gap:6px; align-items:center; margin-bottom:8px; }
+  .field label{ font-size:12px; color:var(--sub); min-width:42px; }
+  .field input,.field select{ flex:1; }
+  .rowbtns{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+  .rowbtns .btn{ flex:1; min-width:0; padding:7px 6px; }
+  .hr{ height:1px; background:var(--line); margin:10px 0; }
+  .stat{ display:flex; justify-content:space-between; font-size:13px; padding:3px 0; }
+  .stat b{ font-variant-numeric:tabular-nums; }
+  .big{ font-size:26px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .sub{ color:var(--sub); font-size:12px; }
+  .holepill{ display:inline-flex; align-items:center; gap:6px; }
+  .stepper{ display:flex; align-items:center; gap:8px; }
+  .stepper .btn{ width:34px; text-align:center; padding:6px 0; font-size:16px; }
+  .shotlist{ font-size:12px; max-height:160px; overflow:auto; }
+  .shotlist .s{ display:flex; justify-content:space-between; padding:3px 4px; border-bottom:1px solid var(--line); }
+  .pl-chip{ padding:5px 9px; border:1px solid var(--line); border-radius:14px; font-size:12px; cursor:pointer; }
+  .pl-chip.active{ background:var(--accent2); border-color:var(--accent2); color:#fff; }
+  .chips{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+
+  /* 스코어카드 */
+  #card{ position:absolute; inset:0; z-index:60; background:var(--bg); overflow:auto; padding:14px; display:none; }
+  #card.show{ display:block; }
+  table{ border-collapse:collapse; width:100%; font-size:13px; }
+  th,td{ border:1px solid var(--line); padding:6px 8px; text-align:center; font-variant-numeric:tabular-nums; }
+  th{ background:var(--panel); color:var(--sub); position:sticky; top:0; }
+  td.name{ text-align:left; white-space:nowrap; }
+  .under{ color:var(--accent2); } .over{ color:var(--danger); } .even{ color:var(--sub); }
+
+  #hud{ position:absolute; right:10px; top:10px; z-index:40; display:flex; flex-direction:column; gap:6px; align-items:flex-end; }
+  #hud .btn{ box-shadow:0 4px 14px rgba(0,0,0,.4); }
+  #toast{ position:absolute; top:12px; left:50%; transform:translateX(-50%); background:var(--accent); color:#04140a; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:700; opacity:0; transition:opacity .2s; z-index:200; pointer-events:none; }
+  #toast.show{ opacity:1; }
+
+  @media (max-width:560px){ .panel{ left:6px; top:6px; width:auto; right:6px; } #hud{ right:6px; top:6px; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand">⛳ 골프 기록원 <a href="index.html">← 좌표앱</a></div>
+    <div class="tabs">
+      <div class="tab active" data-mode="setup">코스 설정</div>
+      <div class="tab" data-mode="round">경기 기록</div>
+      <div class="tab" data-mode="card">스코어카드</div>
+    </div>
+    <div class="grow"></div>
+    <button class="btn" id="mapTypeBtn">🛰 위성/하이브리드</button>
+  </header>
+
+  <div id="stage">
+    <div id="map"></div>
+
+    <!-- 코스 설정 패널 -->
+    <div class="panel" id="setupPanel">
+      <h3>코스 설정 (홀마다 티·그린·파 등록)</h3>
+      <div class="field"><label>코스</label>
+        <select id="courseSel"></select>
+      </div>
+      <div class="field"><label>이름</label>
+        <input id="courseName" placeholder="예: 남서울CC 동코스" />
+      </div>
+      <div class="rowbtns">
+        <button class="btn primary" id="newCourse">＋새 코스</button>
+        <button class="btn" id="saveCourse">💾 저장</button>
+        <button class="btn danger" id="delCourse">삭제</button>
+      </div>
+      <div class="hr"></div>
+      <div class="field"><label>홀</label>
+        <div class="stepper">
+          <button class="btn" id="holePrev">◀</button>
+          <span class="holepill"><b id="holeNo">1</b> 번</span>
+          <button class="btn" id="holeNext">▶</button>
+        </div>
+      </div>
+      <div class="field"><label>파</label>
+        <div class="stepper">
+          <button class="btn" id="parDown">－</button>
+          <b id="parVal">4</b>
+          <button class="btn" id="parUp">＋</button>
+        </div>
+      </div>
+      <div class="rowbtns">
+        <button class="btn ghost" id="setTee">🚩 티 지정</button>
+        <button class="btn ghost" id="setGreen">🟢 그린(핀) 지정</button>
+      </div>
+      <div class="stat"><span class="sub">홀 길이(티→그린)</span><b id="holeLen">—</b></div>
+      <div class="hr"></div>
+      <div class="rowbtns">
+        <button class="btn" id="exportCourse">JSON 내보내기</button>
+        <button class="btn" id="importCourse">불러오기</button>
+      </div>
+      <input type="file" id="importFile" accept="application/json" style="display:none" />
+    </div>
+
+    <!-- 경기 기록 패널 -->
+    <div class="panel" id="roundPanel">
+      <h3>경기 기록</h3>
+      <div class="field"><label>코스</label><select id="roundCourse"></select></div>
+      <div class="field"><label>선수</label>
+        <input id="playersInput" placeholder="홍길동,김철수 (쉼표)" />
+      </div>
+      <div class="rowbtns">
+        <button class="btn primary" id="startRound">새 라운드 시작</button>
+      </div>
+      <div class="hr"></div>
+      <div class="field"><label>홀</label>
+        <div class="stepper">
+          <button class="btn" id="rHolePrev">◀</button>
+          <span class="holepill"><b id="rHoleNo">1</b>번 · 파<b id="rPar">4</b></span>
+          <button class="btn" id="rHoleNext">▶</button>
+        </div>
+      </div>
+      <div class="sub" style="margin-bottom:6px">선수 선택</div>
+      <div class="chips" id="playerChips"></div>
+      <div class="hr"></div>
+      <div style="text-align:center;margin-bottom:6px">
+        <div class="sub">남은 거리(→그린)</div>
+        <div class="big" id="toPin">—</div>
+      </div>
+      <div class="stat"><span class="sub">직전 샷 거리</span><b id="lastShot">—</b></div>
+      <div class="stat"><span class="sub">현재 타수(이 홀)</span><b id="curStrokes">0</b></div>
+      <div class="rowbtns">
+        <button class="btn warn" id="penalty">＋벌타</button>
+        <button class="btn" id="undoShot">↩ 되돌리기</button>
+      </div>
+      <div class="sub">샷 기록 — 지도에서 공 위치를 탭하세요</div>
+      <div class="shotlist" id="shotList"></div>
+    </div>
+
+    <!-- 스코어카드 -->
+    <div id="card">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+        <h3 style="margin:0">스코어카드 — <span id="cardCourse">—</span></h3>
+        <div class="grow"></div>
+        <button class="btn" id="cardCsv">CSV</button>
+        <button class="btn" id="cardJson">JSON</button>
+      </div>
+      <div id="cardTable"></div>
+    </div>
+
+    <div id="hud">
+      <button class="btn" id="locBtn" title="내 위치로">📍</button>
+    </div>
+    <div id="toast"></div>
+  </div>
+</div>
+
+<script>
+window.KAKAO_KEY = "a2c15c73a129ceb2791f13fe8167e20b";
+</script>
+<script>
+(function(){
+  "use strict";
+  var KEY = window.KAKAO_KEY;
+  var INIT = { lat:37.3595, lng:127.1052, level:3 };
+  var map=null, mapReady=false;
+  var overlays = { tee:null, green:null, holeLine:null, shots:[], shotLine:null };
+
+  // ---------- 저장 데이터 ----------
+  var courses = load('golf_courses', []);   // [{id,name,holes:[{n,par,tee,green}]}]
+  var round   = load('golf_round', null);   // {courseId,courseName,players:[],scores:{hole:{player:{shots:[],penalty}}}}
+  function load(k,d){ try{ return JSON.parse(localStorage.getItem(k)) ?? d; }catch(e){ return d; } }
+  function save(k,v){ localStorage.setItem(k, JSON.stringify(v)); }
+  function uid(){ return 'c'+Math.abs(hashStr(courses.map(function(c){return c.name;}).join('|')+courses.length)).toString(36); }
+  function hashStr(s){ var h=0; for(var i=0;i<s.length;i++){ h=(h<<5)-h+s.charCodeAt(i); h|=0; } return h; }
+
+  // ---------- 편집 상태 ----------
+  var mode='setup';
+  var setup = { course:null, hole:1, pending:null };  // pending: 'tee'|'green'|null
+  var rstate = { hole:1, player:0 };
+
+  // ---------- DOM ----------
+  var $=function(id){ return document.getElementById(id); };
+  function toast(m){ var t=$('toast'); t.textContent=m; t.classList.add('show'); setTimeout(function(){ t.classList.remove('show'); },1300); }
+
+  // ---------- 거리 ----------
+  function haversine(a,b){ var R=6371000,d=Math.PI/180; var dLat=(b.lat-a.lat)*d,dLng=(b.lng-a.lng)*d;
+    var s=Math.sin(dLat/2)**2+Math.cos(a.lat*d)*Math.cos(b.lat*d)*Math.sin(dLng/2)**2; return 2*R*Math.asin(Math.sqrt(s)); }
+  function fmtMY(m){ if(m==null) return '—'; return Math.round(m)+' m ('+Math.round(m*1.09361)+' yd)'; }
+
+  // ---------- Kakao 지도 ----------
+  function initMap(){
+    if(!KEY){ $('map').innerHTML='<div class="note">카카오 JavaScript 키가 필요합니다.<br><code>KAKAO_KEY</code> 설정 + 콘솔 JS SDK 도메인 등록.</div>'; return; }
+    var s=document.createElement('script'); s.src="https://dapi.kakao.com/v2/maps/sdk.js?appkey="+KEY+"&autoload=false";
+    s.onerror=function(){ $('map').innerHTML='<div class="note">카카오 SDK 로드 실패 — 도메인 등록 확인.</div>'; };
+    s.onload=function(){
+      if(typeof kakao==='undefined'||!kakao.maps){ $('map').innerHTML='<div class="note">카카오 SDK 초기화 실패 — JS SDK 도메인 등록 확인.</div>'; return; }
+      kakao.maps.load(function(){
+        map=new kakao.maps.Map($('map'),{ center:new kakao.maps.LatLng(INIT.lat,INIT.lng), level:INIT.level });
+        map.setMapTypeId(kakao.maps.MapTypeId.HYBRID); // 기본 위성+라벨
+        mapReady=true;
+        kakao.maps.event.addListener(map,'click',function(e){ onClick(e.latLng.getLat(), e.latLng.getLng()); });
+        renderAll();
+      });
+    };
+    document.head.appendChild(s);
+  }
+  function LL(p){ return new kakao.maps.LatLng(p.lat,p.lng); }
+  function clearOverlays(){
+    ['tee','green','holeLine','shotLine'].forEach(function(k){ if(overlays[k]){ overlays[k].setMap(null); overlays[k]=null; } });
+    overlays.shots.forEach(function(m){ m.setMap(null); }); overlays.shots=[];
+  }
+  function marker(p,color,label){
+    var m=new kakao.maps.CustomOverlay({ position:LL(p), yAnchor:1.0,
+      content:'<div style="transform:translateY(-2px);text-align:center"><div style="background:'+color+';width:16px;height:16px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.6);margin:0 auto"></div>'+
+        (label?'<div style="font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 2px #000">'+label+'</div>':'')+'</div>' });
+    m.setMap(map); return m;
+  }
+  function polyline(points,color){
+    return new kakao.maps.Polyline({ map:map, path:points.map(LL), strokeColor:color, strokeWeight:3, strokeOpacity:0.9, strokeStyle:'solid' });
+  }
+
+  // ---------- 클릭 디스패치 ----------
+  function onClick(lat,lng){
+    var p={lat:lat,lng:lng};
+    if(mode==='setup'){
+      if(!setup.course){ toast('먼저 새 코스를 만드세요'); return; }
+      var h=curHole();
+      if(setup.pending==='tee'){ h.tee=p; setup.pending=null; setBtns(); }
+      else if(setup.pending==='green'){ h.green=p; setup.pending=null; setBtns(); }
+      else { toast('“티 지정” 또는 “그린 지정”을 먼저 누르세요'); return; }
+      renderSetup();
+    } else if(mode==='round'){
+      if(!round){ toast('새 라운드를 시작하세요'); return; }
+      var sc=playerScore();
+      sc.shots.push(p);
+      persistRound(); renderRound();
+    }
+  }
+
+  // ---------- 코스 설정 ----------
+  function curHole(){
+    var c=setup.course; if(!c) return null;
+    var h=c.holes.find(function(x){return x.n===setup.hole;});
+    if(!h){ h={ n:setup.hole, par:4, tee:null, green:null }; c.holes.push(h); c.holes.sort(function(a,b){return a.n-b.n;}); }
+    return h;
+  }
+  function refreshCourseSel(){
+    var sel=$('courseSel'); sel.innerHTML=''; var sel2=$('roundCourse'); sel2.innerHTML='';
+    courses.forEach(function(c){
+      [sel,sel2].forEach(function(s){ var o=document.createElement('option'); o.value=c.id; o.textContent=c.name||'(이름없음)'; s.appendChild(o); });
+    });
+    if(setup.course) sel.value=setup.course.id;
+  }
+  function setBtns(){
+    $('setTee').classList.toggle('active', setup.pending==='tee');
+    $('setGreen').classList.toggle('active', setup.pending==='green');
+  }
+  function renderSetup(){
+    if(!mapReady) return;
+    clearOverlays();
+    var h=setup.course?curHole():null;
+    $('holeNo').textContent=setup.hole;
+    $('parVal').textContent=h?h.par:4;
+    if(h && h.tee){ overlays.tee=marker(h.tee,'#eab308','TEE'); }
+    if(h && h.green){ overlays.green=marker(h.green,'#22c55e','GREEN'); }
+    if(h && h.tee && h.green){
+      overlays.holeLine=polyline([h.tee,h.green],'#eab308');
+      $('holeLen').textContent=fmtMY(haversine(h.tee,h.green));
+      map.setBounds(new kakao.maps.LatLngBounds(LL(h.tee),LL(h.green)));
+    } else { $('holeLen').textContent='—'; }
+    setBtns();
+  }
+
+  // ---------- 라운드 ----------
+  function getCourse(id){ return courses.find(function(c){return c.id===id;}); }
+  function playerScore(){
+    var hk=String(rstate.hole), pk=round.players[rstate.player];
+    round.scores[hk]=round.scores[hk]||{};
+    round.scores[hk][pk]=round.scores[hk][pk]||{ shots:[], penalty:0 };
+    return round.scores[hk][pk];
+  }
+  function persistRound(){ save('golf_round', round); }
+  function strokesOf(sc){ return (sc?sc.shots.length:0)+(sc?sc.penalty:0); }
+  function holeOf(course,n){ return course.holes.find(function(h){return h.n===n;}); }
+
+  function renderPlayerChips(){
+    var box=$('playerChips'); box.innerHTML='';
+    if(!round) return;
+    round.players.forEach(function(p,i){
+      var c=document.createElement('div'); c.className='pl-chip'+(i===rstate.player?' active':''); c.textContent=p;
+      c.onclick=function(){ rstate.player=i; renderRound(); };
+      box.appendChild(c);
+    });
+  }
+  function renderRound(){
+    if(!mapReady||!round){ return; }
+    clearOverlays();
+    var course=getCourse(round.courseId); var h=course?holeOf(course,rstate.hole):null;
+    $('rHoleNo').textContent=rstate.hole; $('rPar').textContent=h?h.par:'-';
+    renderPlayerChips();
+    // 코스 기준선
+    if(h && h.tee) overlays.tee=marker(h.tee,'#eab308','T');
+    if(h && h.green) overlays.green=marker(h.green,'#22c55e','G');
+    if(h && h.tee && h.green) overlays.holeLine=polyline([h.tee,h.green],'rgba(234,179,8,.5)');
+    // 선수 샷
+    var sc=playerScore();
+    var path=[]; if(h&&h.tee) path.push(h.tee);
+    sc.shots.forEach(function(s,i){ overlays.shots.push(marker(s,'#3b82f6',String(i+1))); path.push(s); });
+    if(path.length>=2) overlays.shotLine=polyline(path,'#3b82f6');
+    // 통계
+    var lastP = sc.shots.length?sc.shots[sc.shots.length-1]:(h&&h.tee?h.tee:null);
+    $('toPin').textContent = (lastP&&h&&h.green)?fmtMY(haversine(lastP,h.green)):'—';
+    var prevP = sc.shots.length>=2 ? sc.shots[sc.shots.length-2] : (h&&h.tee?h.tee:null);
+    $('lastShot').textContent = (sc.shots.length&&prevP)?fmtMY(haversine(prevP,sc.shots[sc.shots.length-1])):'—';
+    $('curStrokes').textContent = strokesOf(sc);
+    // 샷 리스트
+    var list=$('shotList'); list.innerHTML='';
+    var from=(h&&h.tee)?h.tee:null;
+    sc.shots.forEach(function(s,i){
+      var d=from?haversine(from,s):null;
+      var to=(h&&h.green)?haversine(s,h.green):null;
+      var row=document.createElement('div'); row.className='s';
+      row.innerHTML='<span>'+(i+1)+'타 '+(d!=null?Math.round(d)+'m':'')+'</span><span class="sub">→그린 '+(to!=null?Math.round(to)+'m':'')+'</span>';
+      list.appendChild(row); from=s;
+    });
+    if(sc.penalty) { var pr=document.createElement('div'); pr.className='s'; pr.innerHTML='<span style="color:var(--warn)">벌타 +'+sc.penalty+'</span>'; list.appendChild(pr); }
+    if(h && h.tee && h.green && !sc.shots.length) map.setBounds(new kakao.maps.LatLngBounds(LL(h.tee),LL(h.green)));
+  }
+
+  // ---------- 스코어카드 ----------
+  function renderCard(){
+    var box=$('cardTable');
+    if(!round){ box.innerHTML='<div class="note" style="position:static">진행 중인 라운드가 없습니다.</div>'; $('cardCourse').textContent='—'; return; }
+    var course=getCourse(round.courseId); $('cardCourse').textContent=round.courseName||'';
+    var holes=course?course.holes.map(function(h){return h.n;}).sort(function(a,b){return a-b;}):[];
+    var parTot=course?course.holes.reduce(function(s,h){return s+h.par;},0):0;
+    var html='<table><thead><tr><th class="name">선수</th>';
+    holes.forEach(function(n){ var h=holeOf(course,n); html+='<th>'+n+'<br><span class="sub">P'+(h?h.par:'-')+'</span></th>'; });
+    html+='<th>합계</th><th>vs Par</th></tr></thead><tbody>';
+    round.players.forEach(function(p){
+      html+='<tr><td class="name">'+esc(p)+'</td>'; var tot=0;
+      holes.forEach(function(n){
+        var sc=round.scores[String(n)]&&round.scores[String(n)][p];
+        var st=sc?strokesOf(sc):0; tot+=st;
+        var h=holeOf(course,n); var rel=sc?(st-(h?h.par:0)):null;
+        var cls= rel==null?'':(rel<0?'under':rel>0?'over':'even');
+        html+='<td class="'+cls+'">'+(sc?st:'·')+'</td>';
+      });
+      var rel=tot-parTot; var cls=rel<0?'under':rel>0?'over':'even';
+      html+='<td><b>'+tot+'</b></td><td class="'+cls+'"><b>'+(rel>0?'+':'')+rel+'</b></td></tr>';
+    });
+    html+='</tbody></table>';
+    box.innerHTML=html;
+  }
+  function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+  // ---------- 모드 전환 ----------
+  function setMode(m){
+    mode=m;
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'),function(t){ t.classList.toggle('active', t.dataset.mode===m); });
+    $('setupPanel').classList.toggle('show', m==='setup');
+    $('roundPanel').classList.toggle('show', m==='round');
+    $('card').classList.toggle('show', m==='card');
+    if(m==='setup') renderSetup();
+    else if(m==='round') renderRound();
+    else renderCard();
+  }
+  function renderAll(){ refreshCourseSel(); setMode(mode); }
+
+  // ---------- 이벤트: 코스 설정 ----------
+  $('newCourse').onclick=function(){
+    var name=$('courseName').value.trim()||('코스 '+(courses.length+1));
+    var c={ id:'c'+Date.now().toString(36), name:name, holes:[] };
+    courses.push(c); setup.course=c; setup.hole=1; save('golf_courses',courses);
+    refreshCourseSel(); $('courseSel').value=c.id; renderSetup(); toast('새 코스 생성');
+  };
+  $('courseSel').onchange=function(){ setup.course=getCourse(this.value); setup.hole=1; $('courseName').value=setup.course?setup.course.name:''; renderSetup(); };
+  $('saveCourse').onclick=function(){ if(!setup.course){ toast('코스가 없습니다'); return; } setup.course.name=$('courseName').value.trim()||setup.course.name; save('golf_courses',courses); refreshCourseSel(); $('courseSel').value=setup.course.id; toast('저장됨'); };
+  $('delCourse').onclick=function(){ if(!setup.course) return; if(!confirm('이 코스를 삭제할까요?')) return; courses=courses.filter(function(c){return c!==setup.course;}); setup.course=courses[0]||null; setup.hole=1; save('golf_courses',courses); refreshCourseSel(); renderSetup(); };
+  $('holePrev').onclick=function(){ setup.hole=Math.max(1,setup.hole-1); setup.pending=null; renderSetup(); };
+  $('holeNext').onclick=function(){ setup.hole=Math.min(18,setup.hole+1); setup.pending=null; renderSetup(); };
+  $('parUp').onclick=function(){ var h=curHole(); if(h){ h.par=Math.min(6,h.par+1); save('golf_courses',courses); renderSetup(); } };
+  $('parDown').onclick=function(){ var h=curHole(); if(h){ h.par=Math.max(3,h.par-1); save('golf_courses',courses); renderSetup(); } };
+  $('setTee').onclick=function(){ if(!setup.course){toast('새 코스를 먼저');return;} setup.pending=setup.pending==='tee'?null:'tee'; setBtns(); toast(setup.pending?'지도에서 티 위치 탭':''); };
+  $('setGreen').onclick=function(){ if(!setup.course){toast('새 코스를 먼저');return;} setup.pending=setup.pending==='green'?null:'green'; setBtns(); toast(setup.pending?'지도에서 그린(핀) 탭':''); };
+  $('exportCourse').onclick=function(){ if(!setup.course){toast('코스 없음');return;} dl((setup.course.name||'course')+'.json', JSON.stringify(setup.course,null,2)); };
+  $('importCourse').onclick=function(){ $('importFile').click(); };
+  $('importFile').onchange=function(e){ var f=e.target.files[0]; if(!f) return; var r=new FileReader(); r.onload=function(){ try{ var c=JSON.parse(r.result); c.id='c'+Date.now().toString(36); courses.push(c); setup.course=c; setup.hole=1; save('golf_courses',courses); refreshCourseSel(); $('courseSel').value=c.id; renderSetup(); toast('불러옴: '+(c.name||'')); }catch(err){ toast('JSON 파싱 실패'); } }; r.readAsText(f); };
+
+  // ---------- 이벤트: 라운드 ----------
+  $('startRound').onclick=function(){
+    var cid=$('roundCourse').value; var course=getCourse(cid);
+    if(!course||!course.holes.length){ toast('코스를 먼저 설정하세요'); return; }
+    var players=$('playersInput').value.split(',').map(function(s){return s.trim();}).filter(Boolean);
+    if(!players.length){ toast('선수 이름을 입력하세요'); return; }
+    if(round && !confirm('진행 중 라운드를 덮어쓸까요?')) return;
+    round={ courseId:cid, courseName:course.name, players:players, scores:{} };
+    rstate={ hole: course.holes[0].n, player:0 }; persistRound(); renderRound(); toast('라운드 시작');
+  };
+  $('rHolePrev').onclick=function(){ var c=getCourse(round.courseId); var ns=c.holes.map(function(h){return h.n;}).sort(function(a,b){return a-b;}); var i=ns.indexOf(rstate.hole); rstate.hole=ns[Math.max(0,i-1)]; renderRound(); };
+  $('rHoleNext').onclick=function(){ var c=getCourse(round.courseId); var ns=c.holes.map(function(h){return h.n;}).sort(function(a,b){return a-b;}); var i=ns.indexOf(rstate.hole); rstate.hole=ns[Math.min(ns.length-1,i+1)]; renderRound(); };
+  $('penalty').onclick=function(){ if(!round)return; playerScore().penalty++; persistRound(); renderRound(); };
+  $('undoShot').onclick=function(){ if(!round)return; var sc=playerScore(); if(sc.shots.length) sc.shots.pop(); else if(sc.penalty) sc.penalty--; persistRound(); renderRound(); };
+
+  // ---------- 스코어카드 내보내기 ----------
+  $('cardCsv').onclick=function(){
+    if(!round){toast('라운드 없음');return;} var course=getCourse(round.courseId);
+    var ns=course.holes.map(function(h){return h.n;}).sort(function(a,b){return a-b;});
+    var rows=[['player'].concat(ns.map(function(n){return 'H'+n;})).concat(['total']).join(',')];
+    round.players.forEach(function(p){ var tot=0; var cells=ns.map(function(n){ var sc=round.scores[String(n)]&&round.scores[String(n)][p]; var st=sc?strokesOf(sc):0; tot+=st; return st; }); rows.push([p].concat(cells).concat([tot]).join(',')); });
+    dl('scorecard.csv', rows.join('\n'));
+  };
+  $('cardJson').onclick=function(){ if(!round){toast('라운드 없음');return;} dl('round.json', JSON.stringify(round,null,2)); };
+
+  // ---------- 공통 ----------
+  function dl(name,text){ var b=new Blob([text],{type:'application/octet-stream'}); var a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click(); setTimeout(function(){URL.revokeObjectURL(a.href);},1000); }
+  $('mapTypeBtn').onclick=(function(){ var t=1; var ids=['ROADMAP','SKYVIEW','HYBRID']; return function(){ if(!mapReady)return; t=(t+1)%3; map.setMapTypeId(kakao.maps.MapTypeId[ids[t]]); toast(ids[t]); }; })();
+  $('locBtn').onclick=function(){ if(!navigator.geolocation||!mapReady){ toast('위치 미지원'); return; } navigator.geolocation.getCurrentPosition(function(p){ map.setCenter(new kakao.maps.LatLng(p.coords.latitude,p.coords.longitude)); map.setLevel(2); },function(){ toast('위치 거부됨'); },{enableHighAccuracy:true}); };
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'),function(t){ t.onclick=function(){ setMode(t.dataset.mode); }; });
+
+  // ---------- 시작 ----------
+  if(courses.length){ setup.course=courses[0]; $('courseName').value=courses[0].name; }
+  if(round){ var c=getCourse(round.courseId); if(c&&c.holes.length) rstate.hole=c.holes[0].n; }
+  initMap();
+})();
+</script>
+</body>
+</html>
