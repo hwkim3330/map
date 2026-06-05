@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>클릭 GPS 좌표 확인 · Naver / Kakao / Google / VWorld / OSM</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/ol/7.5.2/ol.css" />
+<style>
+  :root{ --bg:#0f1216; --panel:#171b21; --line:#2a3038; --txt:#e7ecf2; --sub:#9aa6b2; --accent:#3b82f6; --ok:#22c55e; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; background:var(--bg); color:var(--txt); }
+  #app{ display:flex; flex-direction:column; height:100%; }
+  header{ padding:8px 12px; background:var(--panel); border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .tabs{ display:flex; gap:4px; flex-wrap:wrap; }
+  .tab{ padding:6px 12px; border:1px solid var(--line); background:#10141a; color:var(--sub); border-radius:8px; cursor:pointer; font-size:13px; }
+  .tab.active{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .grow{ flex:1; }
+  #search{ display:flex; gap:6px; align-items:center; }
+  #search input{ background:#10141a; border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:6px 10px; width:220px; font-size:13px; }
+  #search button,.btn{ background:#10141a; border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:6px 10px; cursor:pointer; font-size:13px; }
+  #search button:hover,.btn:hover{ border-color:var(--accent); }
+  #stage{ position:relative; flex:1; }
+  .map{ position:absolute; inset:0; display:none; }
+  .map.active{ display:block; }
+  .note{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center; padding:24px; color:var(--sub); font-size:14px; line-height:1.7; }
+  .note code{ background:#10141a; padding:2px 6px; border-radius:6px; color:#cbd5e1; }
+  #readout{ position:absolute; left:12px; bottom:12px; z-index:50; background:rgba(23,27,33,.95); border:1px solid var(--line); border-radius:12px; padding:12px 14px; min-width:260px; backdrop-filter:blur(6px); box-shadow:0 6px 24px rgba(0,0,0,.4); }
+  #readout .lbl{ font-size:11px; color:var(--sub); letter-spacing:.04em; text-transform:uppercase; }
+  #readout .val{ font-size:18px; font-weight:600; margin:2px 0 8px; font-variant-numeric:tabular-nums; user-select:all; }
+  #readout .row{ display:flex; gap:8px; }
+  #readout .row .btn{ flex:1; text-align:center; }
+  #addr{ font-size:12px; color:var(--sub); margin-top:8px; min-height:16px; }
+  #toast{ position:absolute; top:12px; left:50%; transform:translateX(-50%); background:var(--ok); color:#06210f; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:600; opacity:0; transition:opacity .2s; z-index:100; pointer-events:none; }
+  #toast.show{ opacity:1; }
+  a{ color:var(--accent); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="tabs" id="tabs"></div>
+    <div class="grow"></div>
+    <div id="search">
+      <input id="q" placeholder="주소·장소 검색 (Enter)" />
+      <button id="goBtn">검색</button>
+      <button id="locBtn" title="내 위치">📍</button>
+    </div>
+  </header>
+  <div id="stage">
+    <div id="osm"    class="map active"></div>
+    <div id="naver"  class="map"></div>
+    <div id="kakao"  class="map"></div>
+    <div id="google" class="map"></div>
+    <div id="vworld" class="map"></div>
+
+    <div id="readout">
+      <div class="lbl">위도 / 경도 (WGS84)</div>
+      <div class="val" id="coord">지도를 클릭하세요</div>
+      <div class="row">
+        <button class="btn" id="copyBtn">좌표 복사</button>
+        <button class="btn" id="copyRevBtn">경도,위도</button>
+      </div>
+      <div id="addr"></div>
+    </div>
+    <div id="toast">복사됨</div>
+  </div>
+</div>
+
+<!-- ===================== 설정: 여기에 발급받은 키를 넣으세요 ===================== -->
+<script>
+window.MAP_KEYS = {
+  // 네이버 클라우드 플랫폼(Maps) — JavaScript Key ID. 신규 콘솔은 ncpKeyId, 구버전은 ncpClientId
+  NAVER:  "",
+  // 카카오 디벨로퍼스 — JavaScript 키
+  KAKAO:  "15ea75156dcdcf1fc35542ba58ef3f50",
+  // Google Cloud — Maps JavaScript API Key
+  GOOGLE: "",
+  // VWorld(국토부) 오픈API 인증키 — 도메인 등록 필요
+  VWORLD: ""
+};
+</script>
+<!-- ========================================================================= -->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ol/7.5.2/ol.js"></script>
+<script>
+(function(){
+  "use strict";
+  var K = window.MAP_KEYS;
+  var INIT = { lat: 37.5666103, lng: 126.9783882, zoom: 15 }; // 서울시청
+  var loaded = {}; // 지도별 1회 초기화 플래그
+  var instances = {}; // 지도 인스턴스 보관 (마커 관리용)
+
+  /* ---------- 공통 UI ---------- */
+  var coordEl = document.getElementById('coord');
+  var addrEl  = document.getElementById('addr');
+  var toastEl = document.getElementById('toast');
+  var last = null; // {lat,lng}
+
+  function fmt(n){ return Number(n).toFixed(7); }
+  function setCoord(lat, lng){
+    last = { lat: lat, lng: lng };
+    coordEl.textContent = fmt(lat) + ", " + fmt(lng);
+    addrEl.textContent = "";
+    reverseGeocode(lat, lng);
+  }
+  function toast(msg){ toastEl.textContent = msg||"복사됨"; toastEl.classList.add('show'); setTimeout(function(){ toastEl.classList.remove('show'); }, 1100); }
+  function copy(text){ navigator.clipboard && navigator.clipboard.writeText(text).then(function(){ toast(); }, function(){ fallbackCopy(text); }) || fallbackCopy(text); }
+  function fallbackCopy(text){ var t=document.createElement('textarea'); t.value=text; document.body.appendChild(t); t.select(); try{document.execCommand('copy'); toast();}catch(e){} document.body.removeChild(t); }
+
+  document.getElementById('copyBtn').onclick = function(){ if(last) copy(fmt(last.lat)+", "+fmt(last.lng)); };
+  document.getElementById('copyRevBtn').onclick = function(){ if(last) copy(fmt(last.lng)+", "+fmt(last.lat)); };
+
+  /* 역지오코딩(주소표시): OSM Nominatim — 키 불필요, 가벼운 사용만 */
+  var geoTimer=null;
+  function reverseGeocode(lat,lng){
+    clearTimeout(geoTimer);
+    geoTimer = setTimeout(function(){
+      fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat="+lat+"&lon="+lng+"&accept-language=ko")
+        .then(function(r){ return r.json(); })
+        .then(function(d){ if(d && d.display_name) addrEl.textContent = "📍 "+d.display_name; })
+        .catch(function(){});
+    }, 350);
+  }
+
+  /* ---------- 탭 ---------- */
+  var MAPS = [
+    { id:"osm",    name:"OSM (키 불필요)" },
+    { id:"naver",  name:"Naver" },
+    { id:"kakao",  name:"Kakao" },
+    { id:"google", name:"Google" },
+    { id:"vworld", name:"VWorld" }
+  ];
+  var tabsEl = document.getElementById('tabs');
+  MAPS.forEach(function(m){
+    var b=document.createElement('div'); b.className='tab'+(m.id==='osm'?' active':''); b.textContent=m.name; b.dataset.id=m.id;
+    b.onclick=function(){ activate(m.id); };
+    tabsEl.appendChild(b);
+  });
+  function activate(id){
+    MAPS.forEach(function(m){
+      document.getElementById(m.id).classList.toggle('active', m.id===id);
+    });
+    Array.prototype.forEach.call(tabsEl.children, function(t){ t.classList.toggle('active', t.dataset.id===id); });
+    initMap(id);
+    // OpenLayers는 숨김상태에서 init되면 크기 0 → 표시 후 갱신
+    setTimeout(function(){ if(id==='osm'&&instances.osm) instances.osm.updateSize(); if(id==='vworld'&&instances.vworld) instances.vworld.updateSize(); }, 50);
+  }
+
+  /* ---------- 키 없음 안내 ---------- */
+  function needKey(elId, label, where){
+    var el=document.getElementById(elId);
+    el.innerHTML='<div class="note">'+label+' 지도를 쓰려면 키가 필요합니다.<br>'+
+      '<code>index.html</code> 상단 <code>MAP_KEYS</code>에 '+where+' 키를 넣으세요.<br>'+
+      'README의 키 발급 안내를 참고하세요.</div>';
+  }
+
+  /* ---------- 외부 스크립트 로더 ---------- */
+  function loadScript(src, cb){ var s=document.createElement('script'); s.src=src; s.onload=cb; s.onerror=function(){ cb(new Error('load fail '+src)); }; document.head.appendChild(s); }
+
+  /* ---------- OSM (OpenLayers, 키 불필요) ---------- */
+  function initOSM(){
+    var map = new ol.Map({
+      target:'osm',
+      layers:[ new ol.layer.Tile({ source:new ol.source.OSM() }) ],
+      view:new ol.View({ center:ol.proj.fromLonLat([INIT.lng,INIT.lat]), zoom:INIT.zoom })
+    });
+    var markerSrc = new ol.source.Vector();
+    map.addLayer(new ol.layer.Vector({ source:markerSrc, style:new ol.style.Style({ image:new ol.style.Circle({ radius:7, fill:new ol.style.Fill({color:'#3b82f6'}), stroke:new ol.style.Stroke({color:'#fff',width:2}) }) }) }));
+    map.on('click', function(e){
+      var ll = ol.proj.toLonLat(e.coordinate);
+      setCoord(ll[1], ll[0]);
+      markerSrc.clear(); markerSrc.addFeature(new ol.Feature(new ol.geom.Point(e.coordinate)));
+    });
+    instances.osm = map;
+  }
+
+  /* ---------- VWorld (OpenLayers + VWorld WMTS 타일) ---------- */
+  function initVWorld(){
+    if(!K.VWORLD){ needKey('vworld','VWorld','VWorld 오픈API'); return; }
+    var resolutions=[], matrixIds=[];
+    for(var z=0; z<=19; z++){ resolutions.push(156543.03392804097/Math.pow(2,z)); matrixIds.push(String(z)); }
+    var vworldLayer = new ol.layer.Tile({
+      source:new ol.source.XYZ({
+        url:"https://api.vworld.kr/req/wmts/1.0.0/"+K.VWORLD+"/Base/{z}/{y}/{x}.png",
+        crossOrigin:"anonymous"
+      })
+    });
+    var map = new ol.Map({
+      target:'vworld', layers:[vworldLayer],
+      view:new ol.View({ center:ol.proj.fromLonLat([INIT.lng,INIT.lat]), zoom:INIT.zoom })
+    });
+    var markerSrc = new ol.source.Vector();
+    map.addLayer(new ol.layer.Vector({ source:markerSrc, style:new ol.style.Style({ image:new ol.style.Circle({ radius:7, fill:new ol.style.Fill({color:'#ef4444'}), stroke:new ol.style.Stroke({color:'#fff',width:2}) }) }) }));
+    map.on('click', function(e){
+      var ll = ol.proj.toLonLat(e.coordinate);
+      setCoord(ll[1], ll[0]);
+      markerSrc.clear(); markerSrc.addFeature(new ol.Feature(new ol.geom.Point(e.coordinate)));
+    });
+    instances.vworld = map;
+  }
+
+  /* ---------- Naver ---------- */
+  function initNaver(){
+    if(!K.NAVER){ needKey('naver','Naver','네이버 클라우드 플랫폼(Maps)'); return; }
+    // 신규 콘솔은 ncpKeyId, 구버전은 ncpClientId. 신규 우선 시도.
+    loadScript("https://openapi.map.naver.com/openapi/v3/maps.js?ncpKeyId="+K.NAVER, function(){
+      if(typeof naver==='undefined'||!naver.maps){ needKey('naver','Naver','올바른 네이버'); return; }
+      var map = new naver.maps.Map('naver', { center:new naver.maps.LatLng(INIT.lat,INIT.lng), zoom:INIT.zoom });
+      var marker = new naver.maps.Marker({ position:new naver.maps.LatLng(INIT.lat,INIT.lng), map:null });
+      naver.maps.Event.addListener(map,'click',function(e){
+        var c=e.coord; setCoord(c.lat(), c.lng());
+        marker.setPosition(c); marker.setMap(map);
+      });
+      instances.naver = map;
+    });
+  }
+
+  /* ---------- Kakao ---------- */
+  function initKakao(){
+    if(!K.KAKAO){ needKey('kakao','Kakao','카카오 디벨로퍼스(JavaScript)'); return; }
+    loadScript("https://dapi.kakao.com/v2/maps/sdk.js?appkey="+K.KAKAO+"&autoload=false", function(){
+      if(typeof kakao==='undefined'||!kakao.maps){ needKey('kakao','Kakao','올바른 카카오'); return; }
+      kakao.maps.load(function(){
+        var container=document.getElementById('kakao');
+        var map=new kakao.maps.Map(container,{ center:new kakao.maps.LatLng(INIT.lat,INIT.lng), level:3 });
+        var marker=new kakao.maps.Marker({ position:new kakao.maps.LatLng(INIT.lat,INIT.lng) });
+        kakao.maps.event.addListener(map,'click',function(me){
+          var ll=me.latLng; setCoord(ll.getLat(), ll.getLng());
+          marker.setPosition(ll); marker.setMap(map);
+        });
+        instances.kakao = map;
+      });
+    });
+  }
+
+  /* ---------- Google ---------- */
+  function initGoogle(){
+    if(!K.GOOGLE){ needKey('google','Google','Google Maps JavaScript API'); return; }
+    window.__gmapInit=function(){
+      var map=new google.maps.Map(document.getElementById('google'),{ center:{lat:INIT.lat,lng:INIT.lng}, zoom:INIT.zoom, mapTypeControl:true });
+      var marker=new google.maps.Marker({ map:null });
+      map.addListener('click',function(e){
+        setCoord(e.latLng.lat(), e.latLng.lng());
+        marker.setPosition(e.latLng); marker.setMap(map);
+      });
+      instances.google = map;
+    };
+    loadScript("https://maps.googleapis.com/maps/api/js?key="+K.GOOGLE+"&callback=__gmapInit", function(err){ if(err) needKey('google','Google','올바른 Google'); });
+  }
+
+  function initMap(id){
+    if(loaded[id]) return; loaded[id]=true;
+    if(id==='osm') initOSM();
+    else if(id==='naver') initNaver();
+    else if(id==='kakao') initKakao();
+    else if(id==='google') initGoogle();
+    else if(id==='vworld') initVWorld();
+  }
+
+  /* ---------- 검색 (Nominatim, 키 불필요) ---------- */
+  function panTo(lat,lng){
+    setCoord(lat,lng);
+    var c=ol.proj.fromLonLat([lng,lat]);
+    if(instances.osm){ instances.osm.getView().animate({center:c, zoom:16}); }
+    if(instances.vworld){ instances.vworld.getView().animate({center:c, zoom:16}); }
+    if(instances.naver && naver.maps){ instances.naver.setCenter(new naver.maps.LatLng(lat,lng)); }
+    if(instances.kakao){ instances.kakao.setCenter(new kakao.maps.LatLng(lat,lng)); }
+    if(instances.google){ instances.google.setCenter({lat:lat,lng:lng}); }
+  }
+  function doSearch(){
+    var q=document.getElementById('q').value.trim(); if(!q) return;
+    fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=ko&q="+encodeURIComponent(q))
+      .then(function(r){return r.json();})
+      .then(function(d){ if(d&&d[0]) panTo(parseFloat(d[0].lat),parseFloat(d[0].lon)); else toast("결과 없음"); })
+      .catch(function(){ toast("검색 실패"); });
+  }
+  document.getElementById('goBtn').onclick=doSearch;
+  document.getElementById('q').addEventListener('keydown',function(e){ if(e.key==='Enter') doSearch(); });
+  document.getElementById('locBtn').onclick=function(){
+    if(!navigator.geolocation){ toast("위치 미지원"); return; }
+    navigator.geolocation.getCurrentPosition(function(p){ panTo(p.coords.latitude,p.coords.longitude); }, function(){ toast("위치 거부됨"); });
+  };
+
+  /* 시작: OSM */
+  initMap('osm');
+  setTimeout(function(){ if(instances.osm) instances.osm.updateSize(); }, 100);
+})();
+</script>
+</body>
+</html>
